@@ -1,20 +1,35 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Práce za kačku 🪙
 
-# Run and deploy your AI Studio app
+Vítejte na platformě **Práce za kačku**, moderním tržišti pro krátkodobé brigády a výpomoc. Tento projekt jsem vyvinul jako ukázku moderní webové aplikace, která kombinuje intuitivní uživatelské rozhraní s pokročilými technologiemi, jako je umělá inteligence.
 
-This contains everything you need to run your app locally.
+## 🚀 Klíčové funkce
 
-View your app in AI Studio: https://ai.studio/apps/79bd7708-f27e-4246-942c-6e8d38973ce4
+- **Inteligentní vyhledávání**: Uživatelé mohou snadno vyhledávat brigády podle klíčových slov nebo kategorií přímo v záhlaví webu nebo v hero sekci.
+- **AI Asistentka Kačka**: Integrovaný chatbot postavený na **Gemini API**, který uživatelům pomáhá s hledáním práce, vysvětluje fungování platformy a odpovídá na dotazy v reálném čase.
+- **Detailní náhledy brigád**: Každá nabídka obsahuje podrobné informace v modálním okně, včetně popisu, ceny a lokality.
+- **Simulace zpráv**: Implementovaný systém pro odesílání zpráv inzerentům s vizuálním potvrzením o doručení.
+- **Responzivní design**: Aplikace je plně optimalizována pro mobilní zařízení i desktopy.
 
-## Run Locally
+## 🛠️ Použité technologie
 
-**Prerequisites:**  Node.js
+- **Frontend**: [React](https://reactjs.org/) + [TypeScript](https://www.typescriptlang.org/)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/) pro moderní a čistý design.
+- **Animace**: [Motion](https://motion.dev/) (dříve Framer Motion) pro plynulé přechody a interakce.
+- **Ikony**: [Lucide React](https://lucide.dev/) pro konzistentní vizuální prvky.
+- **AI Engine**: [Google Gemini API](https://ai.google.dev/) pro inteligentní konverzace.
+- **Build Tool**: [Vite](https://vitejs.dev/) pro bleskově rychlý vývoj.
 
+## 📖 Jak projekt spustit
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1.  Nainstalujte závislosti:
+    ```bash
+    npm install
+    ```
+2.  Nastavte environmentální proměnnou `GEMINI_API_KEY` ve vašem prostředí nebo v souboru `.env`.
+3.  Spusťte vývojový server:
+    ```bash
+    npm run dev
+    ```
+
+---
+*Vytvořeno jako ukázka moderního webového vývoje.*
