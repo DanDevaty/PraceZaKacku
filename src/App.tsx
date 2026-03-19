@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
-import { Briefcase, Search, Users, Zap, Star, Mail, Phone, MapPin, Instagram, Facebook, ArrowRight, Hammer, Laptop, BookOpen, Clock, X, CheckCircle2 } from 'lucide-react';
+import React, { useState, useMemo, useEffect, Component } from 'react';
+import { Briefcase, Search, Users, Zap, Star, Mail, Phone, MapPin, Instagram, Facebook, ArrowRight, Hammer, Laptop, BookOpen, Clock, X, CheckCircle2, LogOut, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ChatWidget from './components/ChatWidget';
+import { auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged, collection, addDoc, onSnapshot, query, orderBy, Timestamp, handleFirestoreError, OperationType, FirebaseUser, setDoc, doc, getDoc } from './firebase';
 
 const categories = [
   { title: 'Manuální práce', icon: Hammer, color: 'bg-blue-100 text-blue-600' },
@@ -11,72 +12,169 @@ const categories = [
 ];
 
 interface Gig {
-  id: number;
+  id: string;
   title: string;
   category: string;
   price: string;
   location: string;
   author: string;
+  authorId: string;
   description: string;
+  createdAt: Timestamp;
 }
 
-const featuredGigs: Gig[] = [
-  {
-    id: 1,
-    title: 'Pomoc se stěhováním',
-    category: 'Manuální práce',
-    price: '250 Kč/hod',
-    location: 'Praha 4',
-    author: 'Martin D.',
-    description: 'Hledám dva silné kluky na pomoc se stěhováním bytu 2+kk. Jedná se hlavně o krabice a pár kusů nábytku. Práce na cca 4 hodiny.',
-  },
-  {
-    id: 2,
-    title: 'Doučování Angličtiny',
-    category: 'Doučování',
-    price: '400 Kč/hod',
-    location: 'Online',
-    author: 'Lucie K.',
-    description: 'Nabízím doučování angličtiny pro začátečníky i pokročilé. Zaměření na konverzaci a gramatiku. První hodina zdarma na vyzkoušení.',
-  },
-  {
-    id: 3,
-    title: 'Tvorba loga pro startup',
-    category: 'IT & Design',
-    price: '2500 Kč/projekt',
-    location: 'Vzdáleně',
-    author: 'Jakub S.',
-    description: 'Potřebuji vytvořit minimalistické logo pro nový technologický startup. Požaduji zkušenosti s vektorovou grafikou a portfolio.',
-  },
-  {
-    id: 4,
-    title: 'Venčení psů',
-    category: 'Ostatní',
-    price: '150 Kč/hod',
-    location: 'Brno',
-    author: 'Alena M.',
-    description: 'Hledám někoho spolehlivého na pravidelné venčení mého labradora v odpoledních hodinách. Ideálně někdo, kdo má rád zvířata.',
-  },
-];
+class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean, errorInfo: string }> {
+  public state: { hasError: boolean, errorInfo: string };
+  public props: { children: React.ReactNode };
+
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.props = props;
+    this.state = { hasError: false, errorInfo: '' };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, errorInfo: error.message };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-neutral-50 p-6">
+          <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border border-neutral-200 text-center">
+            <h2 className="text-2xl font-bold text-red-600 mb-4">Něco se nepovedlo</h2>
+            <p className="text-neutral-600 mb-6">Omlouváme se, ale v aplikaci došlo k chybě.</p>
+            <div className="bg-neutral-100 p-4 rounded-xl text-xs font-mono text-left mb-6 overflow-auto max-h-40">
+              {this.state.errorInfo}
+            </div>
+            <button 
+              onClick={() => window.location.reload()}
+              className="bg-emerald-600 text-white px-8 py-3 rounded-full font-bold hover:bg-emerald-500 transition-all"
+            >
+              Zkusit znovu
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function App() {
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [gigs, setGigs] = useState<Gig[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
   const [selectedGig, setSelectedGig] = useState<Gig | null>(null);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [messageSent, setMessageSent] = useState(false);
   const [messageText, setMessageText] = useState('');
 
+  // New Gig Form State
+  const [newGig, setNewGig] = useState({
+    title: '',
+    category: 'Manuální práce',
+    price: '',
+    location: '',
+    description: ''
+  });
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      setIsAuthReady(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthReady) return;
+
+    const q = query(collection(db, 'gigs'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedGigs = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Gig[];
+      setGigs(fetchedGigs);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'gigs');
+    });
+
+    return () => unsubscribe();
+  }, [isAuthReady]);
+
+  const handleLogin = async () => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+      
+      // Sync user profile to Firestore
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef);
+      
+      if (!userSnap.exists()) {
+        await setDoc(userRef, {
+          displayName: user.displayName || 'Anonym',
+          email: user.email,
+          photoURL: user.photoURL,
+          role: 'user' // Default role
+        });
+      }
+    } catch (error) {
+      console.error("Login failed:", error);
+      // If it's a Firestore error during sync, handle it
+      if (error instanceof Error && error.message.includes('permission-denied')) {
+        handleFirestoreError(error, OperationType.WRITE, 'users');
+      }
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
+  };
+
   const filteredGigs = useMemo(() => {
-    if (!activeSearch) return featuredGigs;
-    return featuredGigs.filter(gig => 
+    if (!activeSearch) return gigs;
+    return gigs.filter(gig => 
       gig.title.toLowerCase().includes(activeSearch.toLowerCase()) ||
       gig.category.toLowerCase().includes(activeSearch.toLowerCase()) ||
       gig.description.toLowerCase().includes(activeSearch.toLowerCase())
     );
-  }, [activeSearch]);
+  }, [activeSearch, gigs]);
 
   const handleSearch = () => {
     setActiveSearch(searchQuery);
+  };
+
+  const handleAddGig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    try {
+      await addDoc(collection(db, 'gigs'), {
+        ...newGig,
+        author: user.displayName || 'Anonym',
+        authorId: user.uid,
+        createdAt: Timestamp.now()
+      });
+      setIsAddModalOpen(false);
+      setNewGig({
+        title: '',
+        category: 'Manuální práce',
+        price: '',
+        location: '',
+        description: ''
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'gigs');
+    }
   };
 
   const handleSendMessage = (e: React.FormEvent) => {
@@ -95,7 +193,8 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-50">
+    <ErrorBoundary>
+      <div className="min-h-screen flex flex-col bg-neutral-50">
       {/* Navigation */}
       <nav className="fixed top-0 w-full z-40 glass border-b border-neutral-200 px-6 py-4">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
@@ -128,11 +227,31 @@ export default function App() {
                 <Search size={16} />
               </button>
             </div>
-            <div className="flex gap-4">
-              <button className="text-sm font-medium hover:text-emerald-600 transition-colors">Přihlásit</button>
-              <button className="bg-neutral-900 text-white px-6 py-2 rounded-full text-sm font-medium hover:bg-neutral-800 transition-colors">
-                Vložit inzerát
-              </button>
+            <div className="flex gap-4 items-center">
+              {user ? (
+                <>
+                  <button 
+                    onClick={() => setIsAddModalOpen(true)}
+                    className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-emerald-500 transition-colors"
+                  >
+                    <Plus size={16} />
+                    Vložit inzerát
+                  </button>
+                  <div className="flex items-center gap-3 pl-4 border-l border-neutral-200">
+                    <img src={user.photoURL || ''} alt="" className="w-8 h-8 rounded-full bg-neutral-200" />
+                    <button onClick={handleLogout} className="text-neutral-500 hover:text-red-600 transition-colors">
+                      <LogOut size={18} />
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <button 
+                  onClick={handleLogin}
+                  className="bg-neutral-900 text-white px-6 py-2 rounded-full text-sm font-medium hover:bg-neutral-800 transition-colors"
+                >
+                  Přihlásit se
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -325,7 +444,103 @@ export default function App() {
         </div>
       </footer>
 
+      {/* Add Gig Modal */}
+      <AnimatePresence>
+        {isAddModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsAddModalOpen(false)}
+              className="absolute inset-0 bg-neutral-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl overflow-hidden"
+            >
+              <button 
+                onClick={() => setIsAddModalOpen(false)}
+                className="absolute top-6 right-6 p-2 hover:bg-neutral-100 rounded-full transition-colors z-10"
+              >
+                <X size={24} />
+              </button>
+              
+              <div className="p-8 md:p-10">
+                <h2 className="text-2xl font-bold mb-6">Vložit nový inzerát</h2>
+                <form onSubmit={handleAddGig} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-bold mb-2">Název brigády</label>
+                    <input 
+                      required
+                      type="text"
+                      value={newGig.title}
+                      onChange={(e) => setNewGig({...newGig, title: e.target.value})}
+                      placeholder="Např. Pomoc se stěhováním"
+                      className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-600 outline-none"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-bold mb-2">Kategorie</label>
+                      <select 
+                        value={newGig.category}
+                        onChange={(e) => setNewGig({...newGig, category: e.target.value})}
+                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-600 outline-none"
+                      >
+                        {categories.map(c => <option key={c.title} value={c.title}>{c.title}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold mb-2">Odměna</label>
+                      <input 
+                        required
+                        type="text"
+                        value={newGig.price}
+                        onChange={(e) => setNewGig({...newGig, price: e.target.value})}
+                        placeholder="Např. 250 Kč/hod"
+                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-600 outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold mb-2">Lokalita</label>
+                    <input 
+                      required
+                      type="text"
+                      value={newGig.location}
+                      onChange={(e) => setNewGig({...newGig, location: e.target.value})}
+                      placeholder="Např. Praha 4"
+                      className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-600 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold mb-2">Popis</label>
+                    <textarea 
+                      required
+                      value={newGig.description}
+                      onChange={(e) => setNewGig({...newGig, description: e.target.value})}
+                      placeholder="Popište podrobně, co práce obnáší..."
+                      className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-600 outline-none h-32 resize-none"
+                    />
+                  </div>
+                  <button 
+                    type="submit"
+                    className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-500 transition-colors mt-4"
+                  >
+                    Zveřejnit inzerát
+                  </button>
+                </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Detail Modal */}
+
       <AnimatePresence>
         {selectedGig && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
@@ -414,5 +629,6 @@ export default function App() {
       {/* Chat Widget */}
       <ChatWidget />
     </div>
+    </ErrorBoundary>
   );
 }
